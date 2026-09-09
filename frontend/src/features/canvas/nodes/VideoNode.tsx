@@ -180,6 +180,7 @@ import {
 import { useFreezoneVideoCameraTemplates } from "@/features/canvas/hooks/useFreezoneVideoCameraTemplates";
 import { useFreezoneVideoModels } from "@/features/canvas/hooks/useFreezoneVideoModels";
 import { useCanvasStore, useIsBoxSelecting } from "@/stores/canvasStore";
+import { ReferenceValidationDialog, referenceIssues, matchesReference, type ReferenceIssue } from "./shared/ReferenceValidationDialog";
 import {
   fetchFreezoneJobResult,
   submitFreezoneVideoCompose,
@@ -591,6 +592,8 @@ export const VideoNode = memo(
     const { t } = useTranslation();
     const updateNodeInternals = useUpdateNodeInternals();
     const setSelectedNode = useCanvasStore((state) => state.setSelectedNode);
+    const [referenceErrors, setReferenceErrors] = useState<ReferenceIssue[]>([]);
+    const [referenceErrorsOpen, setReferenceErrorsOpen] = useState(false);
     const isBoxSelecting = useIsBoxSelecting();
     const updateNodeData = useCanvasStore((state) => state.updateNodeData);
     const addDerivedUploadNode = useCanvasStore(
@@ -2073,6 +2076,8 @@ export const VideoNode = memo(
       // 会用过期的 completedUrls 覆写新批次的 generationBatch。
       if (submittingRef.current) return;
       submittingRef.current = true;
+      setReferenceErrors([]);
+      setReferenceErrorsOpen(false);
       try {
       const projectId = readUrl().project;
       if (!projectId) {
@@ -2547,6 +2552,7 @@ export const VideoNode = memo(
             });
         }
 
+        const referenceSnapshot = collectUpstream();
         if (!doSubmit) {
           updateNodeData(id, { isGenerating: false, generationStartedAt: null });
           return;
@@ -2676,6 +2682,25 @@ export const VideoNode = memo(
         // 「先弹上限报错、节点却又冒出加载动画」的矛盾观感。
         if (completedUrls.length === 0 && runErrors.length > 0) {
           const firstError = runErrors[0];
+          const issues = referenceIssues(firstError);
+          if (issues.length) {
+            const upstream = referenceSnapshot;
+            setReferenceErrors(issues.map((issue) => {
+              const matching = upstream.filter((node) => {
+                const values = [submittableImageUrl(node),
+                  "audioUrl" in node.data ? node.data.audioUrl : null,
+                  "videoUrl" in node.data ? node.data.videoUrl : null];
+                return values.some((url) => typeof url === "string" && matchesReference(url, issue.reference_key));
+              });
+              const node = matching.length === 1 ? matching[0] : undefined;
+              return { ...issue, nodeId: node?.id,
+                label: node ? String(node.data.displayName || node.data.sourceFileName || issue.name) : issue.name };
+            }));
+            setReferenceErrorsOpen(true);
+            updateNodeData(id, { generationError: t("referenceValidation.title"),
+              generationErrorDetails: null, generationErrorRequestId: null });
+            return;
+          }
           // 整批都只是「前端不等了」时走中性提示：后端仍在生成，节点保持生成中
           // 状态等待刷新续接，不该按报错呈现。真有失败混在里面则仍按失败处理。
           if (runErrors.every((error) => isTaskPollTimeoutError(error))) {
@@ -2880,6 +2905,10 @@ export const VideoNode = memo(
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
+        <ReferenceValidationDialog issues={referenceErrors} open={referenceErrorsOpen} onClose={() => setReferenceErrorsOpen(false)} />
+        {referenceErrors.length > 0 && <button type="button" className="tap-button nodrag absolute -top-10 left-0" onClick={(event) => {
+          event.stopPropagation(); setReferenceErrorsOpen(true);
+        }}>{t("referenceValidation.title")}</button>}
         {/* 叠卡画册的卡片边：从主视频右侧探出（与图片节点同款），点卡边也能展开画册。 */}
         {hasAlbum && !albumExpanded && videoSource && (
           <>

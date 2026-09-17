@@ -420,9 +420,10 @@ async def _generate_via_newapi(
         base_url=base_url,
         delivery_path=output_path,
         delivery_state=image_delivery_state,
+        read_copied_bytes=False,
     )
 
-    if image_bytes:
+    if image_bytes or image_delivery_state.get("copied"):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         if not image_delivery_state.get("copied"):
             with open(output_path, "wb") as f:

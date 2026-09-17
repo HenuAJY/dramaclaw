@@ -1055,6 +1055,7 @@ async def run(args: argparse.Namespace) -> int:
             trace=provider_trace,
             delivery_path=result_path,
             delivery_state=(image_delivery_state := {}),
+            read_copied_bytes=False,
         )
     elif provider == "openrouter":
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -1116,7 +1117,9 @@ async def run(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    if not image_bytes:
+    if not image_bytes and not (
+        provider == "newapi" and image_delivery_state.get("copied")
+    ):
         raise RuntimeError(error or "image generation returned no image")
     if not (provider == "newapi" and image_delivery_state.get("copied")):
         result_path.write_bytes(image_bytes)

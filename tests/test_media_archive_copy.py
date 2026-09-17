@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -159,6 +160,69 @@ async def test_image_response_copies_archive_without_downloading(
     assert error == ""
     assert path_only is None
     assert path_only_state == {"copied": True, "sha256": ARCHIVE["sha256"]}
+
+
+@pytest.mark.asyncio
+async def test_prop_reference_accepts_copied_file_without_image_bytes(
+    monkeypatch, tmp_path
+):
+    from novelvideo.generators import nanobanana_prop
+
+    async def copied_image(**kwargs):
+        assert kwargs["read_copied_bytes"] is False
+        Path(kwargs["delivery_path"]).write_bytes(b"copied-prop")
+        kwargs["delivery_state"]["copied"] = True
+        return None, "", ""
+
+    monkeypatch.setattr(nanobanana_prop, "_call_newapi_image_api", copied_image)
+    output = tmp_path / "prop.png"
+    result = await nanobanana_prop._generate_via_newapi(
+        prompt="jade pendant",
+        output_path=str(output),
+        api_key="test-token",
+        model="test-image-model",
+        base_url="https://gateway.example/v1",
+    )
+    assert result == str(output)
+    assert output.read_bytes() == b"copied-prop"
+
+
+@pytest.mark.asyncio
+async def test_scene_360_accepts_copied_file_without_image_bytes(monkeypatch, tmp_path):
+    from novelvideo.director_world import scene_360_builder
+
+    async def copied_image(**kwargs):
+        assert kwargs["read_copied_bytes"] is False
+        Path(kwargs["delivery_path"]).write_bytes(b"copied-panorama")
+        kwargs["delivery_state"]["copied"] = True
+        return None, "", ""
+
+    monkeypatch.setattr(scene_360_builder, "load_env", lambda: None)
+    monkeypatch.setattr(scene_360_builder, "build_prompt", lambda **kwargs: "test prompt")
+    monkeypatch.setattr(
+        scene_360_builder,
+        "_resolve_newapi_credentials",
+        lambda: ("test-token", "https://gateway.example/v1"),
+    )
+    monkeypatch.setattr(scene_360_builder, "_call_newapi_image_api", copied_image)
+    monkeypatch.setattr(scene_360_builder, "make_contact_sheet", lambda *args: None)
+    args = SimpleNamespace(
+        quality="medium",
+        image_size="1K",
+        provider="newapi",
+        output_dir=str(tmp_path),
+        text_only=True,
+        scene_name="test scene",
+        master="",
+        reverse_master="",
+        spatial_layout="",
+        model="test-image-model",
+        scene_description="test scene",
+        style="live_action",
+        layer_mode="full",
+    )
+    assert await scene_360_builder.run(args) == 0
+    assert (tmp_path / "scene_panorama_2to1.png").read_bytes() == b"copied-panorama"
 
 
 @pytest.mark.asyncio

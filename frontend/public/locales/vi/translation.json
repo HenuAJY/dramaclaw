@@ -9,7 +9,9 @@
     "minWidth": "Chiều rộng: {{actual}} px; tối thiểu: {{expected}} px.", "maxWidth": "Chiều rộng: {{actual}} px; tối đa: {{expected}} px.",
     "minHeight": "Chiều cao: {{actual}} px; tối thiểu: {{expected}} px.", "maxHeight": "Chiều cao: {{actual}} px; tối đa: {{expected}} px.",
     "minAspectRatio": "Tỷ lệ rộng/cao: {{actual}}; tối thiểu: {{expected}}.", "maxAspectRatio": "Tỷ lệ rộng/cao: {{actual}}; tối đa: {{expected}}.",
-    "minFPS": "Tốc độ khung hình: {{actual}} fps; tối thiểu: {{expected}} fps.", "maxFPS": "Tốc độ khung hình: {{actual}} fps; tối đa: {{expected}} fps."
+    "minFPS": "Tốc độ khung hình: {{actual}} fps; tối thiểu: {{expected}} fps.", "maxFPS": "Tốc độ khung hình: {{actual}} fps; tối đa: {{expected}} fps.",
+    "minDuration": "Thời lượng: {{actual}} giây; mỗi đoạn tối thiểu {{expected}} giây.", "maxDuration": "Thời lượng: {{actual}} giây; mỗi đoạn tối đa {{expected}} giây.",
+    "totalMinDuration": "Tổng thời lượng tham chiếu: {{actual}} giây; tối thiểu {{expected}} giây.", "totalMaxDuration": "Tổng thời lượng tham chiếu: {{actual}} giây; tối đa {{expected}} giây."
   },
   "app": {
     "title": "SuperTale",

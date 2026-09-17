@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { CircleAlert, MapPin } from "lucide-react";
+import { formatAudioDurationSeconds, type AudioDurationRejection } from "./videoModelCapabilities";
 
 export interface ReferenceIssue {
   media: string;
@@ -39,6 +40,29 @@ export function referenceIssueName(issue: ReferenceIssue, sourceFileName?: unkno
   return typeof sourceFileName === "string" && sourceFileName.trim()
     ? sourceFileName.trim()
     : issue.name;
+}
+
+export function referenceDurationIssues(
+  media: "audio" | "video",
+  rejection: AudioDurationRejection,
+  limits: { minMs?: number; maxMs?: number },
+): ReferenceIssue[] {
+  const total = rejection.kind === "totalTooShort" || rejection.kind === "totalTooLong";
+  const code = rejection.kind === "tooShort" ? "minDuration"
+    : rejection.kind === "tooLong" ? "maxDuration"
+      : rejection.kind === "totalTooShort" ? "totalMinDuration" : "totalMaxDuration";
+  const expectedMs = total ? rejection.limitMs
+    : rejection.kind === "tooShort" ? limits.minMs : limits.maxMs;
+  return rejection.clips.map((clip, position) => ({
+    media,
+    index: clip.index ?? position + 1,
+    name: clip.label,
+    reference_key: clip.url ?? "",
+    code,
+    actual: formatAudioDurationSeconds(total ? rejection.totalMs : clip.durationMs),
+    expected: formatAudioDurationSeconds(expectedMs ?? 0),
+    nodeId: clip.nodeId,
+  }));
 }
 
 export function ReferenceValidationDialog({ issues, open, onClose }: {

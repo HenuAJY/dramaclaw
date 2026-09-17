@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ReferenceValidationDialog, referenceIssues, matchesReference, referenceIssueName } from "@/features/canvas/nodes/shared/ReferenceValidationDialog";
+import { ReferenceValidationDialog, referenceDurationIssues, referenceIssues, matchesReference, referenceIssueName } from "@/features/canvas/nodes/shared/ReferenceValidationDialog";
 import { readReferenceMediaLimits } from "@/api/referenceMediaLimits";
+import { audioReferenceDurationRejection } from "@/features/canvas/nodes/shared/videoModelCapabilities";
 
 const focus = vi.hoisted(() => vi.fn());
 const select = vi.hoisted(() => vi.fn());
@@ -32,6 +33,31 @@ describe("reference media errors", () => {
     const issue = { media: "video", index: 1, name: "stored-123.mkv", reference_key: "stored-123.mkv", code: "format" };
     expect(referenceIssueName(issue, "bad_video_format.mkv")).toBe("bad_video_format.mkv");
     expect(referenceIssueName(issue, " ")).toBe("stored-123.mkv");
+  });
+  it("locates short audio clips through the same reference dialog", () => {
+    const rejection = audioReferenceDurationRejection([
+      { label: "bad_audio_duration_mp3_1s.mp3", durationMs: 1000, nodeId: "source", url: "/audio/one", index: 2 },
+    ], { minMs: 2000, maxMs: 30000 });
+    expect(rejection?.kind).toBe("tooShort");
+    if (!rejection) return;
+    const issues = referenceDurationIssues("audio", rejection, { minMs: 2000 });
+    expect(issues).toMatchObject([{ code: "minDuration", actual: "1", expected: "2", index: 2, nodeId: "source" }]);
+    render(<ReferenceValidationDialog open onClose={vi.fn()} issues={issues} />);
+    expect(screen.getByText("bad_audio_duration_mp3_1s.mp3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "referenceValidation.locate" }));
+    expect(focus).toHaveBeenCalledWith("source");
+  });
+  it("lists every source when total video duration exceeds the limit", () => {
+    const rejection = audioReferenceDurationRejection([
+      { label: "a.mp4", durationMs: 2000, nodeId: "first", index: 1 },
+      { label: "b.mp4", durationMs: 2000, nodeId: "second", index: 2 },
+    ], { minMs: null, maxMs: null, totalLimitMs: 3000, perClipLimits: false });
+    expect(rejection?.kind).toBe("totalTooLong");
+    if (!rejection) return;
+    expect(referenceDurationIssues("video", rejection, {})).toMatchObject([
+      { code: "totalMaxDuration", actual: "4", expected: "3", nodeId: "first" },
+      { code: "totalMaxDuration", actual: "4", expected: "3", nodeId: "second" },
+    ]);
   });
   it("lists every violation with actual/expected values and locates its source", () => {
     const close = vi.fn();

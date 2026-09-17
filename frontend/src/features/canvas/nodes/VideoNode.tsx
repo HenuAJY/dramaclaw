@@ -66,8 +66,6 @@ import {
 } from "@/features/canvas/domain/canvasNodes";
 import {
   audioReferenceDurationRejection,
-  formatAudioDurationClips,
-  formatAudioDurationSeconds,
   MAX_AUDIO_REFERENCE_DURATION_MS,
   MAX_AUDIO_REFERENCE_TOTAL_DURATION_MS,
   MIN_AUDIO_REFERENCE_DURATION_MS,
@@ -180,7 +178,7 @@ import {
 import { useFreezoneVideoCameraTemplates } from "@/features/canvas/hooks/useFreezoneVideoCameraTemplates";
 import { useFreezoneVideoModels } from "@/features/canvas/hooks/useFreezoneVideoModels";
 import { useCanvasStore, useIsBoxSelecting } from "@/stores/canvasStore";
-import { ReferenceValidationDialog, referenceIssues, matchesReference, referenceIssueName, type ReferenceIssue } from "./shared/ReferenceValidationDialog";
+import { ReferenceValidationDialog, referenceDurationIssues, referenceIssues, matchesReference, referenceIssueName, type ReferenceIssue } from "./shared/ReferenceValidationDialog";
 import {
   fetchFreezoneJobResult,
   submitFreezoneVideoCompose,
@@ -2155,7 +2153,7 @@ export const VideoNode = memo(
 
         const validateReferenceDurations = async (
           media: "audio" | "video",
-          refs: Array<{ url: string; label: string; durationMs: number | null }>,
+          refs: Array<{ url: string; label: string; durationMs: number | null; nodeId: string }>,
         ): Promise<boolean> => {
           const configured = referenceDurationLimitsMs(selectedVideoModel, media);
           const limits = {
@@ -2190,6 +2188,9 @@ export const VideoNode = memo(
           );
           const rejection = audioReferenceDurationRejection(
             refs.map((ref, index) => ({
+              url: ref.url,
+              nodeId: ref.nodeId,
+              index: index + 1,
               label: ref.label,
               durationMs: resolvedDurations[index] ?? null,
             })),
@@ -2203,43 +2204,14 @@ export const VideoNode = memo(
           );
           if (!rejection) return true;
 
-          const clips = formatAudioDurationClips(rejection.clips, (key, vars) =>
-            t(key, vars),
-          );
-          const prefix =
-            media === "audio" ? "node.videoNode.audio" : "node.videoNode.referenceDuration";
-          const message =
-            rejection.kind === "tooShort"
-              ? t(`${prefix}.${media === "audio" ? "durationTooShort" : "videoTooShort"}`, {
-                  min: formatAudioDurationSeconds(limits.minMs ?? 0),
-                  clips,
-                })
-              : rejection.kind === "tooLong"
-                ? t(`${prefix}.${media === "audio" ? "durationTooLong" : "videoTooLong"}`, {
-                    max: formatAudioDurationSeconds(limits.maxMs ?? 0),
-                    clips,
-                  })
-                : rejection.kind === "totalTooShort"
-                  ? t(
-                      `${prefix}.${media === "audio" ? "durationTotalTooShort" : "videoTotalTooShort"}`,
-                      {
-                        min: formatAudioDurationSeconds(rejection.limitMs),
-                        total: formatAudioDurationSeconds(rejection.totalMs),
-                        clips,
-                      },
-                    )
-                  : t(
-                      `${prefix}.${media === "audio" ? "durationTotalTooLong" : "videoTotalTooLong"}`,
-                      {
-                        max: formatAudioDurationSeconds(rejection.limitMs),
-                        total: formatAudioDurationSeconds(rejection.totalMs),
-                        clips,
-                      },
-                    );
-          toast.error(message, { duration: 5_000 });
+          setReferenceErrors(referenceDurationIssues(media, rejection, limits));
+          setReferenceErrorsOpen(true);
           updateNodeData(id, {
             isGenerating: false,
             generationStartedAt: null,
+            generationError: t("referenceValidation.title"),
+            generationErrorDetails: null,
+            generationErrorRequestId: null,
           });
           return false;
         };
@@ -2358,6 +2330,7 @@ export const VideoNode = memo(
                   : "");
               return {
                 url,
+                nodeId: node.id,
                 label:
                   rawLabel ||
                   t("node.videoNode.audio.clipFallbackLabel", { index: index + 1 }),
@@ -2416,11 +2389,13 @@ export const VideoNode = memo(
             url: string;
             label: string;
             durationMs: number | null;
+            nodeId: string;
           }[] = [];
           const videoRefs: {
             url: string;
             label: string;
             durationMs: number | null;
+            nodeId: string;
           }[] = [];
           let imageCount = 0;
           let videoCount = 0;
@@ -2434,6 +2409,7 @@ export const VideoNode = memo(
                 references.push({ type: "video", url: videoRefUrl });
                 videoRefs.push({
                   url: videoRefUrl,
+                  nodeId: node.id,
                   label: t("node.videoNode.referenceDuration.videoFallbackLabel", {
                     index: videoCount + 1,
                   }),
@@ -2467,6 +2443,7 @@ export const VideoNode = memo(
                 });
                 audioRefs.push({
                   url,
+                  nodeId: node.id,
                   // 时长超限时要指名道姓是哪条，所以这里连标签一起留着；没有文件名
                   // 的（TTS 直出等）退回「音频N」。序号按音频自身 1-based 计，与后端
                   // pipeline.py 的 enumerate(audio_paths, start=1) 同口径；标签本身

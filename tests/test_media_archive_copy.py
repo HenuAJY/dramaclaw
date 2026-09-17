@@ -142,6 +142,24 @@ async def test_image_response_copies_archive_without_downloading(
     assert image == b"copied-image"
     assert state == {"copied": True}
 
+    def fail_read_bytes(self):
+        raise AssertionError("path-only delivery must not read copied image bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    path_only_state = {}
+    path_only, _, error = await _call_newapi_image_api(
+        api_key="test-token",
+        model="test-image-model",
+        prompt="test",
+        base_url="https://gateway.example/v1",
+        delivery_path=tmp_path / "path-only.png",
+        delivery_state=path_only_state,
+        read_copied_bytes=False,
+    )
+    assert error == ""
+    assert path_only is None
+    assert path_only_state == {"copied": True, "sha256": ARCHIVE["sha256"]}
+
 
 @pytest.mark.asyncio
 async def test_audio_url_copies_archive_without_downloading(

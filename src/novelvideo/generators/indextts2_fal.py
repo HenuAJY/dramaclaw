@@ -287,7 +287,8 @@ class IndexTTS2FalClient:
                 response_payload=self._last_provider_response_payload,
             )
             if lease is not None:
-                digest = hashlib.sha256(target.read_bytes()).hexdigest()
+                with target.open("rb") as audio_file:
+                    digest = hashlib.file_digest(audio_file, "sha256").hexdigest()
                 await complete_audio_operation(
                     lease,
                     result_ref=f"audio:sha256:{digest}",
@@ -432,7 +433,9 @@ class IndexTTS2FalClient:
                             success=False,
                             error="DramaClawAPI IndexTTS2 response missing audio bytes or URL",
                         )
-                    if not await copy_archived_result(payload.get("archive"), output_path):
+                    if not await copy_archived_result(
+                        payload.get("archive"), output_path
+                    ):
                         audio_response = await client.get(result_url)
                         audio_response.raise_for_status()
                         output_path.write_bytes(audio_response.content)

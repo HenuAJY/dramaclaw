@@ -3070,7 +3070,7 @@ async def _generate_image(
     elif generator.provider == "newapi":
         ref_bytes = [(Path(path).read_bytes(), path) for path in ref_paths]
         trace: dict[str, str] = {}
-        delivery_state: dict[str, bool] = {}
+        delivery_state: dict[str, bool | str] = {}
         image_bytes, _, error_detail = await _call_newapi_image_api(
             api_key=generator.api_key,
             model=generator.model,
@@ -3088,8 +3088,9 @@ async def _generate_image(
             egress_context=context,
             delivery_path=output_path,
             delivery_state=delivery_state,
+            read_copied_bytes=False,
         )
-        if not image_bytes:
+        if not image_bytes and not delivery_state.get("copied"):
             raise ValueError(
                 f"DramaClawAPI image generation failed: {error_detail or 'empty image'}"
             )
@@ -3610,8 +3611,9 @@ async def _call_newapi_image_api(
     trace: dict[str, str] | None = None,
     egress_context: TrustedEgressContext | None = None,
     delivery_path: str | Path | None = None,
-    delivery_state: dict[str, bool] | None = None,
+    delivery_state: dict[str, bool | str] | None = None,
     before_delivery_copy: Callable[[], None] | None = None,
+    read_copied_bytes: bool = True,
 ) -> tuple[bytes | None, str, str]:
     """Call newAPI's OpenAI-compatible Images API."""
     import httpx
@@ -3876,14 +3878,22 @@ async def _call_newapi_image_api(
                 if await copy_archived_result(
                     first.get("archive"), delivery_path, before_copy=before_delivery_copy
                 ):
-                    if delivery_state is not None:
-                        delivery_state["copied"] = True
                     await _confirm(
                         reservation_id,
                         provider_request_id=provider_request_id,
                         response_id=response_id,
                     )
-                    return Path(delivery_path).read_bytes(), "", ""
+                    if not read_copied_bytes:
+                        if delivery_state is not None:
+                            delivery_state["copied"] = True
+                            delivery_state["sha256"] = str(
+                                first["archive"].get("sha256") or ""
+                            )
+                        return None, "", ""
+                    image_bytes = Path(delivery_path).read_bytes()
+                    if delivery_state is not None:
+                        delivery_state["copied"] = True
+                    return image_bytes, "", ""
             image_b64 = first.get("b64_json") or ""
             if image_b64:
                 image_bytes = base64.b64decode(image_b64)
@@ -4029,7 +4039,8 @@ async def _call_newapi_image_api_with_egress(
     base_url: str | None = None,
     egress_context: TrustedEgressContext | None = None,
     delivery_path: str | Path | None = None,
-    delivery_state: dict[str, bool] | None = None,
+    delivery_state: dict[str, bool | str] | None = None,
+    read_copied_bytes: bool = True,
 ) -> tuple[bytes | None, str, str]:
     """grid 家族的出网闸门（OI-52）：把 `_generate_image` 已验证的形状装到叶子外围。
 
@@ -4055,6 +4066,7 @@ async def _call_newapi_image_api_with_egress(
             base_url=base_url,
             delivery_path=delivery_path,
             delivery_state=delivery_state,
+            read_copied_bytes=read_copied_bytes,
         )
 
     from novelvideo.model_gateway_runtime import next_model_gateway_business_task_id
@@ -4107,19 +4119,30 @@ async def _call_newapi_image_api_with_egress(
             egress_context=context,
             delivery_path=delivery_path,
             delivery_state=delivery_state,
+            read_copied_bytes=read_copied_bytes,
         )
     except Exception:
         await _mark_unknown()
         raise
-    if not image_bytes:
+    if not image_bytes and not (delivery_state and delivery_state.get("copied")):
         # 叶子把传输失败压成 `(None, "", error)`，操作已经出过网但没有可用结果，
         # 只能落 unknown——不能当没发生过，否则重试会以同键再 claim 一次。
         await _mark_unknown()
         return image_bytes, text, error
+    digest = (
+        hashlib.sha256(image_bytes).hexdigest()
+        if image_bytes
+        else str(delivery_state.get("sha256") or "")
+    )
+    if len(digest) != 64 or any(
+        char not in "0123456789abcdef" for char in digest.lower()
+    ):
+        with Path(delivery_path).open("rb") as copied_file:
+            digest = hashlib.file_digest(copied_file, "sha256").hexdigest()
     await _complete_organization_image_egress(
         state,
         trace=trace,
-        result_ref=f"image:sha256:{hashlib.sha256(image_bytes).hexdigest()}",
+        result_ref=f"image:sha256:{digest}",
     )
     return image_bytes, text, error
 
@@ -7230,8 +7253,9 @@ CRITICAL: Keep exact composition from sketch. Only add color, texture, and light
                     base_url=self.base_url,
                     delivery_path=output_path,
                     delivery_state=(image_delivery_state := {}),
+                    read_copied_bytes=False,
                 )
-                if image_bytes:
+                if image_bytes or image_delivery_state.get("copied"):
                     if not image_delivery_state.get("copied"):
                         with open(output_path, "wb") as f:
                             f.write(image_bytes)
@@ -7448,8 +7472,9 @@ CRITICAL: The output must look like a higher-resolution vertical crop/extension 
                     base_url=self.base_url,
                     delivery_path=output_path + ".tmp.png",
                     delivery_state=(image_delivery_state := {}),
+                    read_copied_bytes=False,
                 )
-                if not image_bytes:
+                if not image_bytes and not image_delivery_state.get("copied"):
                     raise ValueError(
                         f"DramaClawAPI Images 未返回图像数据: {newapi_error}"
                         if newapi_error

@@ -180,7 +180,7 @@ import {
 import { useFreezoneVideoCameraTemplates } from "@/features/canvas/hooks/useFreezoneVideoCameraTemplates";
 import { useFreezoneVideoModels } from "@/features/canvas/hooks/useFreezoneVideoModels";
 import { useCanvasStore, useIsBoxSelecting } from "@/stores/canvasStore";
-import { ReferenceValidationDialog, referenceIssues, matchesReference, type ReferenceIssue } from "./shared/ReferenceValidationDialog";
+import { ReferenceValidationDialog, referenceIssues, matchesReference, referenceIssueName, type ReferenceIssue } from "./shared/ReferenceValidationDialog";
 import {
   fetchFreezoneJobResult,
   submitFreezoneVideoCompose,
@@ -2694,7 +2694,7 @@ export const VideoNode = memo(
               });
               const node = matching.length === 1 ? matching[0] : undefined;
               return { ...issue, nodeId: node?.id,
-                label: node ? String(node.data.displayName || node.data.sourceFileName || issue.name) : issue.name };
+                label: referenceIssueName(issue, node?.data.sourceFileName) };
             }));
             setReferenceErrorsOpen(true);
             updateNodeData(id, { generationError: t("referenceValidation.title"),

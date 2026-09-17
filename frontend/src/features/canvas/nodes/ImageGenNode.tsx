@@ -96,7 +96,7 @@ import {
 import { useNaturalSizeRecordTrust } from '@/features/canvas/hooks/useNaturalSizeRecordTrust';
 import { useNodeBodyVariantBudget } from '@/features/canvas/hooks/useNodeBodyVariantBudget';
 import { useCanvasStore, useIsBoxSelecting } from '@/stores/canvasStore';
-import { ReferenceValidationDialog, referenceIssues, matchesReference, type ReferenceIssue } from './shared/ReferenceValidationDialog';
+import { ReferenceValidationDialog, referenceIssues, matchesReference, referenceIssueName, type ReferenceIssue } from './shared/ReferenceValidationDialog';
 import { useShallow } from 'zustand/react/shallow';
 import { getFreezoneCanvasMetadata } from '@/features/freezone/canvasMetadataContext';
 import {
@@ -1313,7 +1313,7 @@ export const ImageGenNode = memo(({ id, data, selected, width, height }: ImageGe
               });
               const node = matching.length === 1 ? matching[0] : undefined;
               return { ...issue, nodeId: node?.id,
-                label: node ? String(node.data.displayName || node.data.sourceFileName || issue.name) : issue.name };
+                label: referenceIssueName(issue, node?.data.sourceFileName) };
             }));
             setReferenceErrorsOpen(true);
             updateNodeData(id, { isGenerating: false, generationStartedAt: null,

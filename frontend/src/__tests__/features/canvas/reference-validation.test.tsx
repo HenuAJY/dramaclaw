@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ReferenceValidationDialog, referenceIssues, matchesReference } from "@/features/canvas/nodes/shared/ReferenceValidationDialog";
+import { ReferenceValidationDialog, referenceIssues, matchesReference, referenceIssueName } from "@/features/canvas/nodes/shared/ReferenceValidationDialog";
 import { readReferenceMediaLimits } from "@/api/referenceMediaLimits";
 
 const focus = vi.hoisted(() => vi.fn());
@@ -28,6 +28,11 @@ describe("reference media errors", () => {
     expect(matchesReference("/media/other/图.png", "freezone/图.png")).toBe(false);
     expect(matchesReference("/media/x.png?secret=yes", "")).toBe(false);
   });
+  it("prefers the uploaded filename over a generic canvas node title", () => {
+    const issue = { media: "video", index: 1, name: "stored-123.mkv", reference_key: "stored-123.mkv", code: "format" };
+    expect(referenceIssueName(issue, "bad_video_format.mkv")).toBe("bad_video_format.mkv");
+    expect(referenceIssueName(issue, " ")).toBe("stored-123.mkv");
+  });
   it("lists every violation with actual/expected values and locates its source", () => {
     const close = vi.fn();
     const parentClick = vi.fn();
@@ -37,6 +42,7 @@ describe("reference media errors", () => {
     ]} /></div>);
     expect(screen.getByText("referenceValidation.minWidth 299 300")).toBeInTheDocument();
     expect(screen.getByText("referenceValidation.format m4a wav, mp3")).toBeInTheDocument();
+    expect(screen.getByText("voice.m4a")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "referenceValidation.locate" }));
     expect(select).toHaveBeenCalledWith("source");
     expect(focus).toHaveBeenCalledWith("source");

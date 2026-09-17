@@ -3,6 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCanvasStore } from "@/stores/canvasStore";
+import { CircleAlert, MapPin } from "lucide-react";
 
 export interface ReferenceIssue {
   media: string;
@@ -34,22 +35,48 @@ export function matchesReference(url: string, key: string): boolean {
   } catch { return false; }
 }
 
+export function referenceIssueName(issue: ReferenceIssue, sourceFileName?: unknown): string {
+  return typeof sourceFileName === "string" && sourceFileName.trim()
+    ? sourceFileName.trim()
+    : issue.name;
+}
+
 export function ReferenceValidationDialog({ issues, open, onClose }: {
   issues: ReferenceIssue[]; open: boolean; onClose: () => void;
 }) {
   const { t } = useTranslation();
   const display = (value: unknown) => Array.isArray(value) ? value.join(", ") : String(value ?? "—");
   return <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
-    <DialogContent className="max-h-[80vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
-      <DialogHeader>
-        <DialogTitle>{t("referenceValidation.title")}</DialogTitle>
-        <DialogDescription>{t("referenceValidation.hint")}</DialogDescription>
+    <DialogContent
+      className="max-h-[min(80vh,640px)] gap-0 overflow-hidden rounded-2xl border border-border bg-popover p-0 shadow-2xl sm:max-w-[480px]"
+      closeButtonClassName="top-4 right-4"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <DialogHeader className="border-b border-border/70 bg-amber-500/[0.06] px-5 py-5 pr-14">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300">
+            <CircleAlert className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 space-y-1.5">
+            <DialogTitle className="text-base leading-6 font-semibold">{t("referenceValidation.title")}</DialogTitle>
+            <DialogDescription className="text-xs leading-5">{t("referenceValidation.hint")}</DialogDescription>
+          </div>
+        </div>
       </DialogHeader>
-      <ul className="space-y-4">
-        {issues.map((issue, index) => <li key={index} className="space-y-1 text-sm">
-          <p className="font-medium">{t(`referenceValidation.${issue.role === "首帧" || issue.role === "first_frame" ? "firstFrame" : issue.role === "尾帧" || issue.role === "last_frame" ? "lastFrame" : issue.media}`)} {issue.index} · {issue.label || issue.name}</p>
-          <p>{t(`referenceValidation.${issue.code}`, { actual: display(issue.actual), expected: display(issue.expected) })}</p>
-          {issue.nodeId && <button type="button" className="tap-button" onClick={(event) => {
+      <ul className="max-h-[min(60vh,500px)] space-y-2.5 overflow-y-auto p-4 sm:p-5">
+        {issues.map((issue, index) => <li key={index} className="rounded-xl border border-border/80 bg-card/70 p-3.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {t(`referenceValidation.${issue.role === "首帧" || issue.role === "first_frame" ? "firstFrame" : issue.role === "尾帧" || issue.role === "last_frame" ? "lastFrame" : issue.media}`)} {issue.index}
+            </span>
+            <span className="min-w-0 break-all font-mono text-xs font-semibold leading-5 text-foreground" title={issue.label || issue.name}>
+              {issue.label || issue.name}
+            </span>
+          </div>
+          <p className="mt-2.5 rounded-lg border border-amber-500/15 bg-amber-500/[0.07] px-3 py-2 text-xs leading-5 text-foreground/85">
+            {t(`referenceValidation.${issue.code}`, { actual: display(issue.actual), expected: display(issue.expected) })}
+          </p>
+          {issue.nodeId && <button type="button" className="mt-2.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 dark:text-amber-300" onClick={(event) => {
             event.stopPropagation();
             const store = useCanvasStore.getState();
             if (store.nodes.some((node) => node.id === issue.nodeId)) {
@@ -57,7 +84,7 @@ export function ReferenceValidationDialog({ issues, open, onClose }: {
               store.requestFocusNode(issue.nodeId!);
             }
             onClose();
-          }}>{t("referenceValidation.locate")}</button>}
+          }}><MapPin className="size-3.5" aria-hidden="true" />{t("referenceValidation.locate")}</button>}
         </li>)}
       </ul>
     </DialogContent>

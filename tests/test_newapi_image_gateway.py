@@ -180,6 +180,7 @@ def test_newapi_sketch_config_defaults_to_dc_image2_low_quality(monkeypatch):
             trace=trace,
         )
     )
+    assert posted["json"]["response_format"] == "url"
 
     assert image_bytes == b"sketch"
     assert error == ""

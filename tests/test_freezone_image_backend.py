@@ -9798,7 +9798,7 @@ async def test_freezone_video_generation_rejects_small_reference_image_before_bi
             ctx=_project_ctx(tmp_path),
             username="admin",
             project="demo",
-            project_dir=tmp_path / "project",
+            project_dir=tmp_path,
             output_dir=str(tmp_path / "output"),
             job_id="job_small_image",
             prompt="参考图生成",
@@ -9814,13 +9814,14 @@ async def test_freezone_video_generation_rejects_small_reference_image_before_bi
             scene_optimize=None,
             backend="newapi_seedance-2.0",
             gen_mode="allReference",
-            capabilities={},
+            capabilities={"referenceImageMinWidth": 300, "referenceImageMinHeight": 300},
         )
 
     assert exc.value.status_code == 400
     detail = str(exc.value.detail)
     assert "logo.png" in detail
-    assert "338x191" in detail
+    assert "minHeight" in detail
+    assert "191" in detail
     assert "300" in detail
 
 
@@ -9895,7 +9896,7 @@ async def test_freezone_video_generation_reports_duplicate_last_frame_once(
             ctx=_project_ctx(tmp_path),
             username="admin",
             project="demo",
-            project_dir=tmp_path / "project",
+            project_dir=tmp_path,
             output_dir=str(tmp_path / "output"),
             job_id="job_dup_last_frame",
             prompt="首尾帧生成",
@@ -9909,8 +9910,10 @@ async def test_freezone_video_generation_reports_duplicate_last_frame_once(
             backend="newapi_seedance-2.0",
             last_frame_path=str(small),
             gen_mode="keyframe",
-            capabilities={},
+            capabilities={"referenceImageMinHeight": 300},
         )
 
     assert exc.value.status_code == 400
-    assert str(exc.value.detail).count("last.png (338x191)") == 1
+    assert len(exc.value.detail["errors"]) == 1
+    assert exc.value.detail["errors"][0]["name"] == "last.png"
+    assert exc.value.detail["errors"][0]["code"] == "minHeight"

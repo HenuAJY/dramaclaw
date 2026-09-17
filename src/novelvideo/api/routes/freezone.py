@@ -307,7 +307,6 @@ from novelvideo.freezone.video_node import (
     summarize_omni_reference_counts,
     update_video_character_folder,
     validate_omni_reference_audio_durations,
-    validate_omni_reference_image_dimensions,
     validate_omni_reference_limits,
     MAX_OMNI_REFERENCE_AUDIO_SECONDS,
     MAX_OMNI_REFERENCE_AUDIO_TOTAL_SECONDS,
@@ -430,6 +429,23 @@ async def _start_or_enqueue_freezone_video_gen(
             requester_user_id=ctx.requester_user_id,
         )
 
+    from novelvideo.freezone.reference_validation import validate_reference_media
+
+    validation_items = list(reference_items)
+    if last_frame_path and not any(
+        item.get("path") == last_frame_path for item in validation_items
+    ):
+        validation_items.append(
+            {"type": "image", "path": last_frame_path, "role": "last_frame"}
+        )
+    reference_errors = await asyncio.to_thread(
+        validate_reference_media, validation_items, capabilities or {}, project_dir
+    )
+    if reference_errors:
+        raise HTTPException(
+            400, detail={"code": "REFERENCE_MEDIA_INVALID", "errors": reference_errors}
+        )
+
     # Catalog fields are optional for backward compatibility. Missing means
     # the legacy behavior (native audio supported); an explicit false is an
     # authoritative capability boundary and cannot be bypassed by old clients.
@@ -477,30 +493,6 @@ async def _start_or_enqueue_freezone_video_gen(
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-    # 参考图尺寸在入队前就拦：厂商必拒的图没必要先预扣积分、上传 relay 再退款。
-    # 组织账号的出口路径会把厂商原文抹成 EGRESS_OPERATION_UNKNOWN，这里是用户唯一
-    # 能看懂原因的地方（3060 2026-08-26：338x191 被 HeightTooSmall 连拒 8 次）。
-    if is_freezone_seedance_backend(backend):
-        image_input_paths = [
-            str(item.get("path") or "").strip()
-            for item in reference_items
-            if str(item.get("type") or "image").strip().lower() == "image"
-            and str(item.get("path") or "").strip()
-        ]
-        if last_frame_path:
-            image_input_paths.append(str(last_frame_path).strip())
-        # 关键帧路由把尾帧同时放进 reference_items 和 last_frame_path，去重后
-        # 同一文件只读一次头、报错也只列一次。
-        image_input_paths = list(dict.fromkeys(path for path in image_input_paths if path))
-        if image_input_paths:
-            try:
-                # 读文件头走线程：/data/output 在 s3fs 上，同步 IO 会卡住事件循环。
-                await asyncio.to_thread(
-                    validate_omni_reference_image_dimensions, image_input_paths
-                )
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from exc
-
     normalized_mode = str(gen_mode or "").strip()
     if normalized_mode == "video_edit":
         if not video_input_paths or input_video_duration_seconds <= 0:
@@ -4911,6 +4903,21 @@ async def freezone_gen(
         raise HTTPException(
             400,
             f"image model supports at most {reference_image_max} reference images",
+        )
+    from novelvideo.freezone.reference_validation import validate_reference_media
+
+    reference_errors = await asyncio.to_thread(
+        validate_reference_media,
+        [
+            {"type": "image", "path": path}
+            for path in _resolve_url_list(project_dir, list(body.reference_urls or []))
+        ],
+        catalog_entry or {},
+        project_dir,
+    )
+    if reference_errors:
+        raise HTTPException(
+            400, detail={"code": "REFERENCE_MEDIA_INVALID", "errors": reference_errors}
         )
     return await _start_or_enqueue_freezone_gen_job(
         ctx=ctx,
